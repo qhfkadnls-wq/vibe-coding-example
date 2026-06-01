@@ -5,7 +5,11 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
 
+  console.log('[callback] code:', code ? 'present' : 'missing')
+  console.log('[callback] cookies:', request.cookies.getAll().map(c => c.name))
+
   if (!code) {
+    console.log('[callback] no code, redirecting to login')
     return NextResponse.redirect(`${origin}/login`)
   }
 
@@ -30,15 +34,19 @@ export async function GET(request: NextRequest) {
 
   const { error } = await supabase.auth.exchangeCodeForSession(code)
 
+  console.log('[callback] exchangeCodeForSession error:', error)
+  console.log('[callback] collectedCookies:', collectedCookies.map(c => c.name))
+
   if (error) {
-    console.error('exchangeCodeForSession error:', error)
-    return NextResponse.redirect(`${origin}/login`)
+    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error.message)}`)
   }
 
   const { data: { user } } = await supabase.auth.getUser()
 
+  console.log('[callback] user:', user?.id ?? 'null')
+
   if (!user) {
-    return NextResponse.redirect(`${origin}/login`)
+    return NextResponse.redirect(`${origin}/login?error=user_not_found`)
   }
 
   const { data: existingUser } = await supabase
@@ -48,6 +56,8 @@ export async function GET(request: NextRequest) {
     .single()
 
   const redirectUrl = existingUser ? `${origin}/` : `${origin}/onboarding`
+  console.log('[callback] redirecting to:', redirectUrl)
+
   const response = NextResponse.redirect(redirectUrl)
 
   collectedCookies.forEach(({ name, value, options }) => {
