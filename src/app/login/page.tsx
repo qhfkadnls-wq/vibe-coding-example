@@ -9,18 +9,23 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   const handleGoogleLogin = async () => {
+    console.log('버튼 클릭됨')
+    console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
     setLoading(true)
     setError('')
     try {
       const supabase = createClient()
-      const { error } = await supabase.auth.signInWithOAuth({
+      console.log('Supabase 클라이언트 생성 완료')
+      const result = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
         },
       })
-      if (error) setError(error.message)
+      console.log('signInWithOAuth 결과:', result)
+      if (result.error) setError(result.error.message)
     } catch (e: unknown) {
+      console.error('오류:', e)
       setError(e instanceof Error ? e.message : '알 수 없는 오류가 발생했습니다')
     } finally {
       setLoading(false)
