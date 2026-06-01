@@ -1,32 +1,58 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServerClient } from '@supabase/ssr'
+import { NextRequest, NextResponse } from 'next/server'
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
 
-  if (code) {
-    const supabase = await createClient()
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-
-    if (!error) {
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (user) {
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select('id')
-          .eq('auth_user_id', user.id)
-          .single()
-
-        if (existingUser) {
-          return NextResponse.redirect(`${origin}/`)
-        } else {
-          return NextResponse.redirect(`${origin}/onboarding`)
-        }
-      }
-    }
+  if (!code) {
+    return NextResponse.redirect(`${origin}/login`)
   }
 
-  return NextResponse.redirect(`${origin}/login`)
+  const redirectTo = NextResponse.redirect(`${origin}/`)
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            redirectTo.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
+  const { error } = await supabase.auth.exchangeCodeForSession(code)
+
+  if (error) {
+    return NextResponse.redirect(`${origin}/login`)
+  }
+
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return NextResponse.redirect(`${origin}/login`)
+  }
+
+  const { data: existingUser } = await supabase
+    .from('users')
+    .select('id')
+    .eq('auth_user_id', user.id)
+    .single()
+
+  if (existingUser) {
+    return redirectTo
+  }
+
+  const onboardingRedirect = NextResponse.redirect(`${origin}/onboarding`)
+  redirectTo.cookies.getAll().forEach(({ name, value }) =>
+    onboardingRedirect.cookies.set(name, value)
+  )
+  return onboardingRedirect
 }
