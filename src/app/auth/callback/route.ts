@@ -1,4 +1,4 @@
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieMethodsServer } from '@supabase/ssr'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/login`)
   }
 
-  const redirectTo = NextResponse.redirect(`${origin}/`)
+  const collectedCookies: { name: string; value: string; options: Record<string, unknown> }[] = []
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,17 +20,18 @@ export async function GET(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            redirectTo.cookies.set(name, value, options)
-          )
+          cookiesToSet.forEach(({ name, value, options }) => {
+            collectedCookies.push({ name, value, options: options as Record<string, unknown> })
+          })
         },
-      },
+      } as CookieMethodsServer,
     }
   )
 
   const { error } = await supabase.auth.exchangeCodeForSession(code)
 
   if (error) {
+    console.error('exchangeCodeForSession error:', error)
     return NextResponse.redirect(`${origin}/login`)
   }
 
@@ -46,13 +47,12 @@ export async function GET(request: NextRequest) {
     .eq('auth_user_id', user.id)
     .single()
 
-  if (existingUser) {
-    return redirectTo
-  }
+  const redirectUrl = existingUser ? `${origin}/` : `${origin}/onboarding`
+  const response = NextResponse.redirect(redirectUrl)
 
-  const onboardingRedirect = NextResponse.redirect(`${origin}/onboarding`)
-  redirectTo.cookies.getAll().forEach(({ name, value }) =>
-    onboardingRedirect.cookies.set(name, value)
-  )
-  return onboardingRedirect
+  collectedCookies.forEach(({ name, value, options }) => {
+    response.cookies.set(name, value, options as Parameters<typeof response.cookies.set>[2])
+  })
+
+  return response
 }
