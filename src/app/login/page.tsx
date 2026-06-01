@@ -3,28 +3,43 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { ClipboardList } from 'lucide-react'
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>
+}) {
+  const { error } = await searchParams
+
   async function googleLogin() {
     'use server'
-    const supabase = await createClient()
-    const headersList = await headers()
-    const host = headersList.get('host') || ''
-    const proto = host.includes('localhost') ? 'http' : 'https'
-    const origin = `${proto}://${host}`
+    try {
+      const supabase = await createClient()
+      const headersList = await headers()
+      const host = headersList.get('host') || ''
+      const proto = host.includes('localhost') ? 'http' : 'https'
+      const origin = `${proto}://${host}`
 
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${origin}/auth/callback`,
-        skipBrowserRedirect: true,
-      },
-    })
+      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${origin}/auth/callback`,
+          skipBrowserRedirect: true,
+        },
+      })
 
-    if (error || !data.url) {
-      redirect('/login?error=oauth_failed')
+      if (oauthError) {
+        redirect(`/login?error=${encodeURIComponent(oauthError.message)}`)
+      }
+
+      if (!data?.url) {
+        redirect('/login?error=OAuth+URL을+생성하지+못했습니다')
+      }
+
+      redirect(data.url)
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'NEXT_REDIRECT') throw e
+      redirect(`/login?error=${encodeURIComponent(String(e))}`)
     }
-
-    redirect(data.url)
   }
 
   return (
@@ -52,6 +67,12 @@ export default function LoginPage() {
             Google로 로그인
           </button>
         </form>
+
+        {error && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-600 break-all">{decodeURIComponent(error)}</p>
+          </div>
+        )}
       </div>
     </div>
   )
